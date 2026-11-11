@@ -80,6 +80,19 @@ there is none — classification runs on the device's WebAssembly.
   reported as `false`, which is exactly what GitHub Pages serves.
 - HTTPS is required for camera access, which GitHub Pages provides.
 
+## What was measured, not assumed
+
+| claim | number |
+| --- | --- |
+| `check_image.jpg` on the page vs `check_expected.json` | largest difference **9.35 × 10⁻⁹** (cherry 0.999981 both; apple 1.230e-7 both; chestnut 1.811e-5 both; maple 5.883e-7 both) — far inside "three decimals" |
+| one classification on a desktop CPU, WebAssembly, 1 thread | 25–30 ms, so the live loop runs every 250 ms without dropping frames |
+| download for a phone | 6.3 MB model + 11 MB WebAssembly, then cached |
+| network requests | 7 GETs at load: 4 data files from this site, 2 runtime files from jsDelivr, 1 favicon. **None** while the camera runs, and **0** POSTs — no pixel is uploaded |
+| QR code | version 3, 29×29 modules, error correction M; decoded by an independent library as exactly `https://256995.github.io/mlr-ex08/`, and its modules agree with a reference encoder module for module (0 differences out of 841) |
+
+Still the student's own job for `REVIEW.md`: the screenshot from the phone with a
+real leaf, and a photo uploaded through the *Upload a photo* button.
+
 ## Files
 
 | file | what it is |
