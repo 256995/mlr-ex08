@@ -1,0 +1,4 @@
+# development scratch: the Chrome test harness and its output, not part of the page
+_dev/
+_nb_dump.txt
+__pycache__/
