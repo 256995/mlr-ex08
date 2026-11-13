@@ -147,15 +147,15 @@ line to change.
 
 ## Not verified, said out loud
 
-- **The URL in the QR code is not live.** The fallback address is
-  `https://256995.github.io/mlr-ex08/better_classifier/`, where this folder *would* be
-  published. Measured over the network on 2026-11-12: that one answers **404**, while the
-  Task 2 page above it, `https://256995.github.io/mlr-ex08/`, answers **200**. Nothing here has
-  been pushed yet. (An earlier version of this file, and the working rules one folder up in
-  `CLAUDE.md`, say this copy has no git remote — that is wrong: it has `origin` at
-  `github.com/256995/mlr-ex08` with `main` level with
-  `origin/main`, so publishing is an ordinary push, and the folder keeps its subfolder position
-  in the repo, which is what the Pages address above points at.)
+- **Resolved: the QR address is live now.** It was not — on 2026-11-12
+  `https://256995.github.io/mlr-ex08/better_classifier/` answered **404** while the Task 2 page
+  above it answered **200**, which is the whole explanation of "the QR does not work". The
+  folder was published on 2026-11-13 (commit `f9ea03a`, pushed to `github.com/256995/mlr-ex08`
+  from this copy, staying a subfolder of the repo root), the address answers **200**, and the
+  page was then tested *from that address* rather than from a local server — see `README.md`.
+  An earlier version of this file, and the working rules one folder up in `CLAUDE.md`, said
+  this copy has no git remote: it has had `origin` there all along, with `main` level with
+  `origin/main`, which is why publishing was one ordinary push.
 - **The QR code draws a correct code, and it used to point at a page that does not exist.**
   Both codes the page can draw were checked with `_dev/qr_check.py` on 2026-11-12, each
   painted as a PNG, decoded by zxing-cpp, and rebuilt by a reference encoder (`qrcode`)
@@ -174,15 +174,16 @@ line to change.
   scanned it got a 404, and the page loaded from anywhere else could not be reached by
   scanning at all. `PAGE_URL` is now the address the browser actually loaded
   (`location.href`, minus query and fragment), with the published URL only as the fallback
-  for a page opened straight from disk. Verified in the browser: served from
-  `http://127.0.0.1:8731/better_classifier/`, the drawn code encodes exactly that.
-  **This folder still has to be published for the published URL to work** — nothing here
-  has been pushed, and this copy has no git remote.
+  for a page opened straight from disk. Verified in the browser from both ends of that rule:
+  served from `http://127.0.0.1:8731/better_classifier/` the drawn code encodes exactly that
+  (29 modules, mask 7), and drawn by the published page it encodes the GitHub Pages address
+  (33 modules, mask 0) — which since 2026-11-13 is a page that exists.
 - **The browser check ran on Chrome for Windows with a fake camera device**
   (`_dev/test_better_page.py`, PASS at 9.06e-8, live bars at 24 ms/frame, both photo uploads
-  classified with the canvas capped at 1024, 0 POSTs, no console errors), from three
-  addresses: `localhost` (camera allowed), a LAN IP (camera refused with the reason shown,
-  uploads still fine) and `file://` (model cannot load, page says why, QR falls back). It has
+  classified with the canvas capped at 1024, 0 POSTs, no console errors), from four
+  addresses: the published GitHub Pages URL (camera granted, 17 ms/frame), `localhost` (camera
+  allowed), a LAN IP (camera refused with the reason shown, uploads still fine) and `file://`
+  (model cannot load, page says why, QR falls back). It has
   not been opened on the iPhone, and `?selftest`-style in-page checks cannot prove the
   Safari/wasm path — nor the ~16-million-pixel canvas limit the photo fix works around, which
   desktop Chrome does not enforce.

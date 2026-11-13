@@ -97,8 +97,9 @@ Last run of that, on 2026-11-12: check **PASS at 9.06e-8** (limit 0.001), live l
 hidden for a 0.94 answer, both uploads classified (`photo_small.jpg` 1600×1200 → 98.14 %,
 `photo_huge.jpg` 8000×6000 → 98.03 %, canvas capped to `1024x768` both times), QR text equal
 to the address served (29 modules, mask 7), **no POSTs and no data: URLs**, no console
-errors. Full output in `../_dev/better_report.json`, screenshots `../_dev/better_shot.png`
-and `../_dev/better_shot_footer.png`. The upload tests need
+errors. Re-run on 2026-11-13 against the published address — the numbers in *Deploying it*
+below, and the `../_dev/better_report.json` and two screenshots on disk, are from that run.
+The upload tests need
 `../_dev/photo_small.jpg` (any normal photo) and `../_dev/photo_huge.jpg` (over 16 million
 pixels) — both are there now, rebuilt from `_dev/leaves_data/leaves_cam/apple/apple_000.jpg`:
 
@@ -132,13 +133,17 @@ phone and scan the code on its screen. The QR encodes whatever address the page 
 from, so the other way works too: `python -m http.server` on a laptop and the phone on the
 same wifi (the camera needs `https://` or `localhost`, so for a LAN address the camera will
 say so and the photo upload is what works). `PUBLISHED_URL` is what a page opened from disk
-falls back to — until this folder is actually published, that URL is a 404 and the QR built
-from it opens nothing. Checked over the network on 2026-11-12:
-`https://256995.github.io/mlr-ex08/` answers **200**,
-`https://256995.github.io/mlr-ex08/better_classifier/` answers **404** — the Task 2 page is
-live, this folder is not. Publishing is an ordinary push: this copy has `origin` at
-`github.com/256995/mlr-ex08`, its `main` is level with `origin/main`, and the folder stays
-where it is in the repository — the Pages address is exactly `…/mlr-ex08/better_classifier/`.
+falls back to.
+
+**Published on 2026-11-13**, as `better_classifier/` in `github.com/256995/mlr-ex08` (commit
+`f9ea03a`, pushed from this copy), so the address is
+<https://256995.github.io/mlr-ex08/better_classifier/> — the subfolder position is what makes
+that URL, and it is also what `PUBLISHED_URL` and the QR's disk fallback encode. Both the page
+and its 6.25 MB model answer **200** there, and the harness above was run against that address
+rather than a local server: check **PASS at 9.06e-8**, rear camera granted and running at
+17 ms/frame, both uploads classified, the QR drawn by the deployed page read back by zxing-cpp
+as exactly that address with **0 of 1089** modules differing from a reference encoder, 0 POSTs,
+no console errors. The screenshots and `../_dev/better_report.json` are from that run.
 
 ## Fixed after the first phone test (2026-11-12)
 
@@ -168,13 +173,14 @@ the live camera loop unchanged at 24 ms/frame, QR text equal to the address serv
 0 POSTs and no console errors. **Not verified on an iPhone** — the canvas limit is Safari
 documented behaviour, exercised here on desktop Chrome, which tolerates 48 MP happily.
 
-### The three addresses a phone can actually open it at
+### The four addresses a phone can actually open it at
 
-All three served to headless Chrome on this machine, 2026-11-12, and all three are what a
-scan of the code on the screen would give you:
+All four opened in headless Chrome on this machine — the last one after the push, on
+2026-11-13 — and all four are what scanning the code on the screen gives you:
 
 | opened at | model | QR encodes | camera |
 | --- | --- | --- | --- |
+| `https://256995.github.io/mlr-ex08/better_classifier/` | loads, check PASS | that address (v4, mask 0) | granted, 17 ms/frame, 5.7 MB downloaded |
 | `http://127.0.0.1:8731/better_classifier/` | loads, check PASS | that address (v3, mask 7) | works (localhost is secure) |
 | `http://192.168.0.157:8732/better_classifier/` | loads, check PASS | that address | refuses, and says: *"The camera needs HTTPS (or localhost) — this page was opened at http:, where browsers do not hand out a camera. The photo upload still works."* |
 | `file:///…/better_classifier/index.html` | fails (`fetch` of `model_info.json` is refused), and the page now says so in both places | falls back to `PUBLISHED_URL` (v4, mask 0) | — |

@@ -114,6 +114,8 @@ JavaScript in `index.html` (byte mode, error correction level M, ISO/IEC 18004)
 
 ## Task 4: a second page in `better_classifier/`
 
+**Open the second page here: <https://256995.github.io/mlr-ex08/better_classifier/>**
+
 `better_classifier/index.html` is this page with a better model, and nothing else about it
 changed. It loads `better_classifier/leaf_model_v2.onnx` instead of the file above, its QR
 code encodes whatever address the page was loaded from (so it works from GitHub Pages and
