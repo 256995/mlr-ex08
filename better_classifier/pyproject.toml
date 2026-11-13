@@ -1,0 +1,29 @@
+# Dependencies of the Task 4 experiments in this folder.
+# Everything is run through uv, never through a system interpreter:
+#   uv run train_leaves.py --variant baseline --seed 0
+[project]
+name = "better-classifier"
+version = "0.1.0"
+description = "Task 4: leaf classifier improvements, measured one change at a time"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.8",          # CPU build from PyPI (Windows wheels are CPU-only)
+    "torchvision>=0.23",   # ImageFolder + the pretrained MobileNetV3
+    "onnx>=1.17",          # writing the metadata into the exported model
+    "onnxscript>=0.4",     # torch.onnx.export of this network
+    "onnxruntime>=1.19",   # checking the exported file outside the browser
+    "pillow>=10",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",           # uv run --group dev ruff check .
+]
+
+# Said out loud rather than inherited from whoever's global ruff config is lying around:
+# the pycodestyle subset that catches real mistakes, import order, and bugbear.
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B"]

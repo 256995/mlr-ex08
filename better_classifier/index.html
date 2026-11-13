@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14261a">
+<title>Leaf classifier — the improved one, running in your phone</title>
+<style>
+  :root {
+    --bg: #f4f6f3;
+    --card: #ffffff;
+    --ink: #16211a;
+    --muted: #5c6b60;
+    --line: #dde3dc;
+    --accent: #2f7d4f;
+    --bar: #9fb8a8;
+    --warn: #8a5a12;
+    --warn-bg: #fdf4e3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 0 14px calc(28px + env(safe-area-inset-bottom));
+  }
+  header { padding: 18px 0 6px; }
+  h1 { font-size: 21px; margin: 0 0 4px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+  p.sub { margin: 0; color: var(--muted); font-size: 14px; }
+  main { display: block; max-width: 560px; margin: 0 auto; }
+  section, footer {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    margin: 14px 0;
+  }
+  /* The video box is a square and the video covers it, so what you see inside
+     the frame is exactly the central square that goes into the model. */
+  .stage { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #10160f; border-radius: 10px; overflow: hidden; }
+  .stage video, .stage canvas.snapshot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .stage canvas.snapshot { display: none; }
+  .crop { position: absolute; inset: 0; pointer-events: none; }
+  .crop::before, .crop::after {
+    content: ""; position: absolute; width: 26px; height: 26px;
+    border: 3px solid rgba(255,255,255,.85);
+  }
+  .crop::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; border-top-left-radius: 6px; }
+  .crop::after { bottom: 10px; right: 10px; border-left: 0; border-top: 0; border-bottom-right-radius: 6px; }
+  .hint {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: #dbe6da; font-size: 15px; padding: 22px;
+  }
+  /* the rule above sets display, which would otherwise beat the [hidden]
+     attribute's default and leave the hint floating over a running camera */
+  .hint[hidden] { display: none; }
+  button, .filelabel {
+    font: inherit; font-weight: 600; color: #fff; background: var(--accent);
+    border: 0; border-radius: 10px; padding: 12px 16px; margin: 4px 6px 4px 0; cursor: pointer;
+  }
+  button.secondary, .filelabel.secondary { background: #4b5a50; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .status { font-size: 13px; color: var(--muted); min-height: 18px; margin-top: 6px; word-break: break-word; }
+  .status.err { color: #a51f1f; }
+  progress { width: 100%; height: 8px; margin-top: 8px; }
+  ul.probs { list-style: none; margin: 0; padding: 0; }
+  ul.probs li { display: grid; grid-template-columns: 78px 1fr 74px; gap: 8px; align-items: center; margin: 9px 0; font-variant-numeric: tabular-nums; }
+  .name { font-weight: 600; }
+  .name.top { color: var(--accent); }
+  .track { background: #e9ede8; border-radius: 999px; height: 12px; overflow: hidden; }
+  /* .track is a grid item so the browser blocks it for us, but .fill is a plain
+     child — without display:block a <span> ignores its width and height. */
+  .fill { display: block; background: var(--bar); height: 100%; width: 0%; border-radius: 999px; transition: width .15s linear; }
+  .fill.top { background: var(--accent); }
+  .val { text-align: right; font-size: 13px; color: var(--muted); }
+  .unsure {
+    background: var(--warn-bg); border: 1px solid #ecd9b4; color: var(--warn);
+    border-radius: 10px; padding: 9px 11px; font-size: 14px; margin: 10px 0 0;
+  }
+  .unsure[hidden] { display: none; }
+  .verdict { font-weight: 700; margin: 8px 0 2px; }
+  .verdict.ok { color: var(--accent); }
+  .verdict.bad { color: #a51f1f; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 5px 4px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  .small { font-size: 12.5px; color: var(--muted); }
+  .qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .qr > div { flex: 1 1 150px; min-width: 0; }   /* beside the code when narrow screens allow it */
+  .qr canvas { image-rendering: pixelated; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .qr a { color: var(--accent); font-weight: 700; word-break: break-all; }
+  code { background: #eef1ec; padding: 1px 4px; border-radius: 4px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Leaf classifier — improved</h1>
+  <p class="sub">The Task 4 model (<code id="modelName"></code>), running in this browser. The pictures never leave your phone.</p>
+</header>
+
+<main>
+<section>
+  <h2>Camera</h2>
+  <div class="row">
+    <button id="startBtn">Start rear camera</button>
+    <button id="stopBtn" class="secondary" disabled>Stop</button>
+    <label class="filelabel secondary" for="fileInput">Upload a photo</label>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+  <div class="status" id="camStatus"></div>
+  <div class="stage" style="margin-top:10px">
+    <video id="video" playsinline webkit-playsinline muted autoplay></video>
+    <canvas class="snapshot" id="still"></canvas>
+    <div class="crop" id="cropBox" hidden></div>
+    <div class="hint" id="hint">The square frame shows the part of the picture that the model sees.</div>
+  </div>
+</section>
+
+<section>
+  <h2>Probabilities</h2>
+  <ul class="probs" id="probs"></ul>
+  <div class="status" id="runStatus">Loading the model…</div>
+  <p class="unsure" id="unsure"></p>
+  <progress id="dl" hidden max="100" value="0"></progress>
+</section>
+
+<section>
+  <h2>Check against the notebook</h2>
+  <p class="small">Runs <code id="checkImageName"></code> through exactly the same preprocessing as the camera and compares it with <code>check_expected.json</code>, which <code>train_leaves.py --export</code> wrote from the same weights in PyTorch. Pass = every class agrees to three decimals.</p>
+  <div class="row"><button id="checkBtn" class="secondary" disabled>Run the check</button></div>
+  <div class="verdict" id="verdict"></div>
+  <div id="checkTable"></div>
+</section>
+
+<section>
+  <h2>What is different here</h2>
+  <p class="small" id="whatsNew">This page runs the model this folder trained — see <code>RESULTS.md</code> for what each change measured, and <code>TRIED_AND_NOT_USED.md</code> for the ideas that did not make it.</p>
+</section>
+
+<footer>
+  <h2>Open this page on your phone</h2>
+  <div class="qr">
+    <canvas id="qr" width="0" height="0" aria-label="QR code linking to this page"></canvas>
+    <div>
+      <div style="font-weight:600; margin-bottom:4px">Scan this code with your phone camera</div>
+      <a id="pageLink" href="#" rel="me">…</a>
+      <div class="small" style="margin-top:6px">Generated as a vector of black and white modules by the JavaScript on this page — no QR service is contacted.</div>
+    </div>
+  </div>
+  <p class="small" style="margin-bottom:0">This page loads only <code id="footerModel"></code>, <code>model_info.json</code>, <code id="footerCheck"></code> and <code>check_expected.json</code> from this site, plus the ONNX Runtime Web library from <code>cdn.jsdelivr.net</code>. Images are never uploaded anywhere; inference runs on the device.</p>
+</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Where this page's numbers come from: model_info.json, written next
+ * to the model by better_classifier/train_leaves.py.
+ *   {"classes":[...], "input_size":96, "mean":[...], "std":[...]}
+ * ------------------------------------------------------------------ */
+/* The QR code has to open the page you are looking at, so it encodes the address the
+ * browser actually loaded - GitHub Pages, a laptop on the same wifi, a tunnel, whatever
+ * it is. Hardcoding one address here means a QR code to a page that may not exist: the
+ * first version of this file encoded the published URL while this folder had never been
+ * published, and every phone that scanned it got a 404. A page opened straight from disk
+ * has no address worth encoding; there the published URL is the best guess. */
+const PUBLISHED_URL = "https://256995.github.io/mlr-ex08/better_classifier/";
+const PAGE_URL = location.protocol.startsWith("http")
+  ? location.href.split("#")[0].split("?")[0]
+  : PUBLISHED_URL;
+const MODEL_FILE = "leaf_model_v2.onnx";       // the model this folder trained
+const CHECK_IMAGE = "check_image.jpg";
+const CHECK_EXPECTED = "check_expected.json";
+const CHECK_AFTER_MS = 250;                    // how often the camera frame is re-classified
+const MAX_SNAPSHOT = 1024;                     // longest side of the canvas an uploaded photo is drawn into
+const TOLERANCE = 1e-3;                        // "agrees to three decimals"
+/* Admit it when the answer is a coin flip. From the measured confidence table of THIS
+ * model on the camera-like photos (uv run python measure_onnx.py leaf_model_v2.onnx,
+ * printed in RESULTS.md): top probability under 0.60 -> right on 9 photos 0.56 of the
+ * time, 0.60-0.80 -> 0.75, 0.80-0.95 -> 0.89, above 0.95 -> 0.98. So 0.60 is where
+ * "trustworthy" stops being true; the page then speaks on 8 of 120 photos. The stricter
+ * 0.80 would also cover the 0.60-0.80 band, where the model is right 3 times out of 4. */
+const UNSURE_BELOW = 0.6;
+
+const $ = (id) => document.getElementById(id);
+const video = $("video"), still = $("still"), hint = $("hint"), cropBox = $("cropBox");
+const stillCtx = still.getContext("2d", { willReadFrequently: true });
+const preprocessCtx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+
+let info = null;          // model_info.json
+let session = null;       // onnxruntime-web InferenceSession
+let modelError = null;    // why it failed, so the page can say that instead of "still loading"
+let inputName = "image", outputName = "logits";
+let stream = null;        // MediaStream from the rear camera
+let timer = null, busy = false;
+
+$("modelName").textContent = MODEL_FILE;
+$("footerModel").textContent = MODEL_FILE;
+$("checkImageName").textContent = CHECK_IMAGE;
+$("footerCheck").textContent = CHECK_IMAGE;
+
+/* ---------------- ONNX Runtime Web setup ----------------
+ * The version in the <script> tag at the bottom of this file is pinned by two
+ * measurements, not by taste (the same two as for the Task 2 page):
+ *   - it must be newer than 1.17, because this model was exported with ONNX
+ *     IR version 10 and ONNX Runtime 1.17 aborts on it (with a bare number,
+ *     not an error message — see describeError below);
+ *   - it stays on 1.19.2 because that glue loads ort-wasm-simd-threaded.wasm
+ *     (11 MB), while 1.22 and newer hard-code the WebGPU "jsep" binary
+ *     (22 MB) — half the download matters on a phone.
+ * GitHub Pages cannot send the COOP/COEP headers that SharedArrayBuffer
+ * needs, so the WASM runtime has to run on a single thread — which is also
+ * what iOS Safari requires. Both are satisfied by numThreads = 1. */
+function supportsWasmSimd() {
+  try {
+    return WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,
+                                                10,10,1,8,0,65,0,253,15,253,98,11]));
+  } catch (e) { return false; }
+}
+const WASM_SIMD = supportsWasmSimd();
+
+/* The WebAssembly binary is taken from the same directory as the JavaScript
+ * glue that is already loaded (the <script> tag at the bottom of the page),
+ * so the two can never end up as different versions — a mismatch of glue and
+ * .wasm fails deep inside WebAssembly with a message nobody can read. */
+const ORT_SCRIPT = document.querySelector("script[src*='onnxruntime-web']");
+const RUNTIME_DIST = ORT_SCRIPT.src.replace(/[^/]*$/, "");
+const RUNTIME_VERSION = (ORT_SCRIPT.src.match(/onnxruntime-web@([^/]+)\//) || [, "?"])[1];
+ort.env.wasm.wasmPaths = RUNTIME_DIST;
+ort.env.wasm.numThreads = 1;
+ort.env.wasm.proxy = false;
+
+/* ---------------- Preprocessing ----------------
+ * Exactly the notebook's transforms.Compose([ToTensor(), Normalize(mean, std)])
+ * applied to the centre square of the picture:
+ *   1. take the central square of the frame        (crop)
+ *   2. resize it to input_size × input_size        (bilinear, drawn by canvas)
+ *   3. read RGB bytes and divide by 255 → 0..1     (ToTensor)
+ *   4. (x − mean[c]) / std[c] per channel          (Normalize)
+ *   5. store as CHW float32: channel planes first, shape 1×3×size×size
+ */
+function classifySource(source, sourceWidth, sourceHeight) {
+  const size = info.input_size;
+  const square = Math.min(sourceWidth, sourceHeight);
+  const cropX = (sourceWidth - square) / 2;      // centre the square horizontally
+  const cropY = (sourceHeight - square) / 2;     // …and vertically
+
+  preprocessCtx.canvas.width = size;
+  preprocessCtx.canvas.height = size;
+  preprocessCtx.imageSmoothingEnabled = true;
+  preprocessCtx.imageSmoothingQuality = "high";
+  preprocessCtx.drawImage(source, cropX, cropY, square, square, 0, 0, size, size);
+
+  const rgba = preprocessCtx.getImageData(0, 0, size, size).data;   // RGBA, 0..255
+  const plane = size * size;
+  const tensor = new ort.Tensor("float32", new Float32Array(3 * plane), [1, 3, size, size]);
+  const data = tensor.data;
+  for (let i = 0, p = 0; i < plane; i++, p += 4) {
+    data[i]                = (rgba[p]     / 255 - info.mean[0]) / info.std[0];   // R plane
+    data[plane + i]        = (rgba[p + 1] / 255 - info.mean[1]) / info.std[1];   // G plane
+    data[2 * plane + i]    = (rgba[p + 2] / 255 - info.mean[2]) / info.std[2];   // B plane
+  }
+  return tensor;
+}
+
+/* The network's output is raw logits (softmax is applied inside
+ * CrossEntropyLoss during training), so turn them into probabilities here. */
+function softmax(logits) {
+  const max = Math.max(...logits);
+  const exps = logits.map((v) => Math.exp(v - max));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map((v) => v / sum);
+}
+
+async function runInference(source, width, height) {
+  const t0 = performance.now();
+  const feeds = {};
+  feeds[inputName] = classifySource(source, width, height);
+  const output = await session.run(feeds);
+  const probabilities = softmax(Array.from(output[outputName].data));
+  renderProbabilities(probabilities, performance.now() - t0);
+  return probabilities;
+}
+
+/* ---------------- Showing the result ---------------- */
+function buildProbabilityList() {
+  const list = $("probs");
+  list.textContent = "";
+  info.classes.forEach((name) => {
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="name"></span><span class="track"><span class="fill"></span></span><span class="val"></span>';
+    li.dataset.class = name;
+    list.appendChild(li);
+  });
+}
+
+function renderProbabilities(probabilities, milliseconds) {
+  const top = probabilities.indexOf(Math.max(...probabilities));
+  info.classes.forEach((name, i) => {
+    const li = $("probs").children[i];
+    li.querySelector(".name").textContent = name;
+    li.querySelector(".name").classList.toggle("top", i === top);
+    const fill = li.querySelector(".fill");
+    fill.style.width = (probabilities[i] * 100).toFixed(2) + "%";
+    fill.classList.toggle("top", i === top);
+    li.querySelector(".val").textContent = (probabilities[i] * 100).toFixed(2) + " %";
+  });
+  $("runStatus").textContent =
+    info.classes[top] + " — " + probabilities[top].toFixed(4) + "  ·  " + Math.round(milliseconds) + " ms per frame";
+
+  /* Trained on hundreds of photos from other phones' cameras, the network still meets
+   * leaves it cannot place. Saying so is more useful than showing 31 % as an answer.
+   * UNSURE_BELOW comes from the measured confidence table in RESULTS.md. */
+  const unsure = $("unsure");
+  const below = UNSURE_BELOW > 0 && probabilities[top] < UNSURE_BELOW;
+  unsure.hidden = !below;
+  if (below) {
+    const second = probabilities.indexOf(Math.max(...probabilities.filter((v) => v !== probabilities[top])));
+    unsure.textContent = "Not sure — " + info.classes[top] + " is only " + (probabilities[top] * 100).toFixed(0) +
+      " % and " + info.classes[second] + " is " + (probabilities[second] * 100).toFixed(0) +
+      "%. Get closer so the leaf fills the square, and try again.";
+  }
+}
+
+/* ---------------- Loading the model ---------------- */
+async function fetchWithProgress(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(url + " → HTTP " + response.status);
+  const total = Number(response.headers.get("content-length")) || 0;
+  if (!response.body || !total) return new Uint8Array(await response.arrayBuffer());
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  const bar = $("dl");
+  bar.hidden = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    bar.value = Math.round((received / total) * 100);
+  }
+  bar.hidden = true;
+  const out = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+  return out;
+}
+
+async function loadModel() {
+  info = await (await fetch("model_info.json")).json();
+  buildProbabilityList();
+  $("runStatus").textContent = "Downloading the model (" + info.classes.length + " classes, " +
+    info.input_size + "×" + info.input_size + " input)…";
+  const modelBytes = await fetchWithProgress(MODEL_FILE);
+  $("runStatus").textContent = "Compiling the network in WebAssembly…";
+  session = await ort.InferenceSession.create(modelBytes.buffer, {
+    executionProviders: ["wasm"],
+    graphOptimizationLevel: "all",
+  });
+  inputName = session.inputNames[0];
+  outputName = session.outputNames[0];
+  $("runStatus").textContent =
+    "Model ready — input “" + inputName + "”, output “" + outputName + "”, " +
+    "ONNX Runtime Web " + RUNTIME_VERSION + ", WASM SIMD " + (WASM_SIMD ? "on" : "NOT supported") + ", 1 thread.";
+  $("checkBtn").disabled = false;
+  runCheck();                     // prove the numbers match before the user does anything
+}
+
+/* ONNX Runtime rejects some failures with a bare number rather than an Error,
+ * so never rely on error.message alone when reporting what went wrong. */
+function describeError(error) {
+  if (error instanceof Error) return error.name + ": " + error.message;
+  if (typeof error === "object" && error !== null) return JSON.stringify(error);
+  return "runtime reported code " + String(error) + " (no message)";
+}
+
+/* ---------------- Live camera ---------------- */
+async function startCamera() {
+  if (stream) return;
+  if (!window.isSecureContext) {
+    return say($("camStatus"), "The camera needs HTTPS (or localhost) — this page was opened at " +
+      location.protocol + ", where browsers do not hand out a camera. The photo upload still works.", true);
+  }
+  const media = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  if (!media) return say($("camStatus"), "This browser has no camera access — use the photo upload below.", true);
+  say($("camStatus"), "Asking for the rear camera…");
+  try {
+    // facingMode "environment" = the rear lens; the constraint is "ideal", so a
+    // laptop webcam still works and desktop testing is possible.
+    stream = await media.call(navigator.mediaDevices, {
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 1280 } },
+    });
+  } catch (error) {
+    return say($("camStatus"), "Camera refused: " + error.name + " — " + error.message + ". Upload a photo instead.", true);
+  }
+  video.srcObject = stream;
+  video.setAttribute("playsinline", "");     // iOS Safari: play inline, not in the fullscreen player
+  still.style.display = "none";
+  hint.hidden = true;
+  cropBox.hidden = false;
+  try {
+    await video.play();
+  } catch (error) {
+    say($("camStatus"), "Press “Start rear camera” again to begin the video.", true);
+  }
+  $("startBtn").disabled = true;
+  $("stopBtn").disabled = false;
+  say($("camStatus"), "Classifying every " + CHECK_AFTER_MS + " ms.");
+  timer = setInterval(tick, CHECK_AFTER_MS);
+}
+
+function stopCamera() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  if (stream) stream.getTracks().forEach((track) => track.stop());
+  stream = null;
+  video.srcObject = null;
+  $("startBtn").disabled = false;
+  $("stopBtn").disabled = true;
+  cropBox.hidden = true;
+  hint.hidden = false;
+  hint.textContent = "Camera stopped. Start it again, or upload a photo.";
+  say($("camStatus"), "Camera stopped.");
+}
+
+async function tick() {
+  if (busy || !stream) return;
+  if (!session) {
+    // While the model is still downloading a frame is skipped in silence, which is right.
+    // When it failed, silence looks like a frozen page, so stop and say why, once.
+    if (modelError) {
+      clearInterval(timer);
+      timer = null;
+      say($("runStatus"), "Nothing to classify — the model never loaded: " + modelError, true);
+    }
+    return;
+  }
+  if (video.readyState < video.HAVE_CURRENT_DATA || !video.videoWidth) return;
+  busy = true;
+  try {
+    await runInference(video, video.videoWidth, video.videoHeight);
+  } catch (error) {
+    clearInterval(timer); timer = null;
+    say($("runStatus"), "Inference failed: " + describeError(error), true);
+  } finally {
+    busy = false;
+  }
+}
+
+/* ---------------- Photo upload (fallback, and the notebook check) ---------------- */
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read " + file.name)); };
+    image.src = url;
+  });
+}
+
+$("fileInput").addEventListener("change", async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!session) {
+    return say($("runStatus"), modelError
+      ? "The model never loaded — " + modelError + ". Until it loads, no photo can be classified."
+      : "The model is still loading — try again in a moment.", true);
+  }
+  try {
+    const image = await loadImageFromFile(file);
+    /* The photo is not kept at its full size: the model reads one 96x96 crop of it, and
+     * Safari on iOS silently refuses a canvas over about 16 million pixels — which a
+     * 48-megapixel phone photo exceeds, leaving a blank canvas that looks exactly like a
+     * photo that "does not load". 1024 pixels is far more than the crop needs. */
+    const shrink = Math.min(1, MAX_SNAPSHOT / Math.max(image.naturalWidth, image.naturalHeight));
+    still.width = Math.max(1, Math.round(image.naturalWidth * shrink));
+    still.height = Math.max(1, Math.round(image.naturalHeight * shrink));
+    stillCtx.drawImage(image, 0, 0, still.width, still.height);
+    still.style.display = "block";
+    video.style.display = "none";
+    hint.hidden = true;
+    await runInference(still, still.width, still.height);
+    say($("runStatus"), "Classified " + file.name + " (" + image.naturalWidth + "×" + image.naturalHeight + ").");
+    if (file.name.toLowerCase() === CHECK_IMAGE) runCheck();
+  } catch (error) {
+    say($("runStatus"), describeError(error), true);
+  } finally {
+    event.target.value = "";
+  }
+});
+
+/* ---------------- The check the notebook asks for ---------------- */
+async function runCheck() {
+  $("checkBtn").disabled = true;
+  $("verdict").textContent = "Checking…";
+  $("verdict").className = "verdict";
+  try {
+    const expected = await (await fetch(CHECK_EXPECTED)).json();
+    const image = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error(CHECK_IMAGE + " could not be loaded"));
+      el.src = CHECK_IMAGE + "?cachebust=" + Date.now();
+    });
+    // Painted onto the snapshot canvas first, so the check runs through exactly
+    // the same preprocessing as a camera frame or an uploaded photo.
+    still.width = image.naturalWidth;
+    still.height = image.naturalHeight;
+    stillCtx.drawImage(image, 0, 0);
+    const got = await runInference(still, image.naturalWidth, image.naturalHeight);
+    const rows = info.classes.map((name, i) => {
+      const wanted = expected[name];
+      const diff = Math.abs(got[i] - wanted);
+      return { name, page: got[i], notebook: wanted, diff };
+    });
+    const worst = Math.max(...rows.map((r) => r.diff));
+    const pass = worst <= TOLERANCE;
+    $("verdict").textContent = (pass ? "PASS" : "FAIL") + " — largest difference between the page and PyTorch: " +
+      worst.toExponential(2) + " (limit " + TOLERANCE + ")";
+    $("verdict").className = "verdict " + (pass ? "ok" : "bad");
+    // 0.000000 says nothing useful about a probability of 1.2e-7, so the small
+    // ones are shown in scientific notation instead.
+    const show = (value) => (value >= 1e-4 ? value.toFixed(6) : value.toExponential(3));
+    $("checkTable").innerHTML =
+      "<table><tr><th>class</th><th>this page</th><th>check_expected.json</th><th>difference</th></tr>" +
+      rows.map((r) => "<tr><td>" + r.name + "</td><td>" + show(r.page) + "</td><td>" +
+        show(r.notebook) + "</td><td>" + r.diff.toExponential(2) + "</td></tr>").join("") + "</table>";
+    window.__checkResult = { pass, worst, rows };
+  } catch (error) {
+    $("verdict").textContent = "The check could not run: " + error.message;
+    $("verdict").className = "verdict bad";
+    window.__checkResult = { pass: false, error: String(error) };
+  } finally {
+    $("checkBtn").disabled = false;
+  }
+}
+
+function say(element, text, isError) {
+  element.textContent = text;
+  element.classList.toggle("err", Boolean(isError));
+}
+
+$("startBtn").addEventListener("click", () => { video.style.display = "block"; startCamera(); });
+$("stopBtn").addEventListener("click", stopCamera);
+$("checkBtn").addEventListener("click", runCheck);
+
+loadModel().catch((error) => {
+  modelError = error.message;   // a photo picked now gets this reason, not "still loading"
+  say($("runStatus"), "Could not load the model: " + error.message +
+    " — this page needs model_info.json and " + MODEL_FILE + " next to it.", true);
+  // "Run the check" stays disabled for the rest of the page's life, and a disabled button
+  // explains nothing. The check's own place, where PASS/FAIL would stand, says why.
+  say($("verdict"), "The check cannot run: the model did not load (" + error.message + ").", true);
+  console.error(error);
+});
+
+/* ================================================================== *
+ * QR code, written here from the ISO/IEC 18004 rules: byte mode, error
+ * correction level M, versions 1-6 (up to 106 characters). No library and
+ * no QR web service — the modules are computed in this script and painted
+ * onto the canvas below. Identical to the encoder of the Task 2 page, kept
+ * here so that this page stays a single file.
+ * ================================================================== */
+const QR = (() => {
+  // Version (1-6) → [total codewords, EC codewords per block, [[blocks, data per block], …]]
+  const VERSIONS = {
+    1: [26, 10, [[1, 16]]],
+    2: [44, 16, [[1, 28]]],
+    3: [70, 26, [[1, 44]]],
+    4: [100, 18, [[2, 32]]],
+    5: [134, 24, [[2, 43]]],
+    6: [172, 16, [[4, 27]]],
+  };
+  const ALIGN = { 1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34] };
+  const GF_EXP = new Uint8Array(512);
+  const GF_LOG = new Uint8Array(256);
+  for (let i = 0, x = 1; i < 255; i++) {
+    GF_EXP[i] = x;
+    GF_LOG[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;          // primitive polynomial x^8+x^4+x^3+x^2+1
+  }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+  const mul = (a, b) => (a === 0 || b === 0 ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]]);
+
+  // Coefficients are stored from the highest power down, so g[0] is 1.
+  function generator(degree) {                  // Reed–Solomon generator polynomial
+    let poly = [1];                             // multiply out (x − 1)(x − α)(x − α²)…
+    for (let i = 0; i < degree; i++) {
+      const next = new Array(poly.length + 1).fill(0);
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];                     // the x part
+        next[j + 1] ^= mul(poly[j], GF_EXP[i]); // the −α^i part
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function remainder(data, degree) {            // polynomial long division → EC codewords
+    const gen = generator(degree);
+    const result = new Uint8Array(degree);
+    for (const byte of data) {
+      const factor = byte ^ result[0];
+      result.copyWithin(0, 1);
+      result[degree - 1] = 0;
+      for (let i = 0; i < degree; i++) result[i] ^= mul(gen[i + 1], factor);
+    }
+    return Array.from(result);
+  }
+
+  function encodeBytes(text) {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    for (const [version, [total, ecPerBlock, groups]] of Object.entries(VERSIONS)) {
+      const dataCap = groups.reduce((sum, [n, k]) => sum + n * k, 0);
+      const bitLength = 4 + 8 + bytes.length * 8;                 // mode + 8-bit count + data
+      if (bitLength <= dataCap * 8) {
+        const bits = [];
+        const push = (value, length) => { for (let i = length - 1; i >= 0; i--) bits.push((value >> i) & 1); };
+        push(4, 4);                                               // 0100 = byte mode
+        push(bytes.length, 8);                                    // versions 1-9: 8-bit count
+        bytes.forEach((b) => push(b, 8));
+        push(0, Math.min(4, dataCap * 8 - bits.length));          // terminator
+        while (bits.length % 8) bits.push(0);
+        const words = [];
+        for (let i = 0; i < bits.length; i += 8) {
+          words.push(bits.slice(i, i + 8).reduce((acc, b) => (acc << 1) | b, 0));
+        }
+        const pad = [0xec, 0x11];
+        let p = 0;
+        while (words.length < dataCap) words.push(pad[p++ % 2]);
+        return { version: Number(version), total, ecPerBlock, groups, words };
+      }
+    }
+    throw new Error("text too long for a version 6 QR code");
+  }
+
+  function interleave(words, groups, ecPerBlock) {
+    const blocks = [];
+    let offset = 0;
+    for (const [count, size] of groups) {
+      for (let b = 0; b < count; b++) {
+        const data = words.slice(offset, offset + size);
+        offset += size;
+        blocks.push({ data, ec: remainder(data, ecPerBlock) });
+      }
+    }
+    const out = [];
+    const maxData = Math.max(...blocks.map((b) => b.data.length));
+    for (let i = 0; i < maxData; i++) blocks.forEach((b) => { if (i < b.data.length) out.push(b.data[i]); });
+    for (let i = 0; i < ecPerBlock; i++) blocks.forEach((b) => out.push(b.ec[i]));
+    return out;
+  }
+
+  function buildMatrix(version, codewords, mask) {
+    const size = 17 + version * 4;
+    const modules = Array.from({ length: size }, () => new Array(size).fill(null));
+    const reserved = Array.from({ length: size }, () => new Array(size).fill(false));
+
+    const setFinder = (r0, c0) => {
+      for (let r = -1; r <= 7; r++) {
+        for (let c = -1; c <= 7; c++) {
+          const r1 = r0 + r, c1 = c0 + c;
+          if (r1 < 0 || r1 >= size || c1 < 0 || c1 >= size) continue;
+          const dark = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                       (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                       (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+          modules[r1][c1] = dark;
+          reserved[r1][c1] = true;
+        }
+      }
+    };
+    setFinder(0, 0); setFinder(0, size - 7); setFinder(size - 7, 0);
+
+    ALIGN[version].forEach((r) => {
+      ALIGN[version].forEach((c) => {
+        if (reserved[r][c]) return;                       // overlaps a finder pattern
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            modules[r + dr][c + dc] = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+            reserved[r + dr][c + dc] = true;
+          }
+        }
+      });
+    });
+
+    for (let i = 8; i < size - 8; i++) {                  // timing patterns
+      modules[6][i] = i % 2 === 0; reserved[6][i] = true;
+      modules[i][6] = i % 2 === 0; reserved[i][6] = true;
+    }
+    for (let i = 0; i < 9; i++) {                         // format areas next to the top-left finder
+      if (i !== 6) { reserved[8][i] = true; reserved[i][8] = true; }   // row/column 6 is timing
+    }
+    // The other two format areas are eight modules wide each; the cell just
+    // outside them (row/column size-9) still carries data, so it must not be
+    // reserved — reserving it silently shifts the whole bit stream by one.
+    for (let i = 0; i < 8; i++) {
+      reserved[8][size - 1 - i] = true;                  // along row 8
+      reserved[size - 1 - i][8] = true;                  // down column 8, includes the dark module
+    }
+    modules[size - 8][8] = true;                         // the module that is always dark
+
+    const MASKS = [
+      (r, c) => (r + c) % 2 === 0,
+      (r) => r % 2 === 0,
+      (r, c) => c % 3 === 0,
+      (r, c) => (r + c) % 3 === 0,
+      (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+      (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+      (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+      (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+    ];
+
+    const grid = modules.map((row) => row.slice());
+    // Data: two-module-wide columns, right to left, alternating up and down,
+    // skipping the vertical timing column.
+    let bitIndex = 0;
+    const bit = (i) => (codewords[i >> 3] >> (7 - (i & 7))) & 1;
+    const totalBits = codewords.length * 8;
+    for (let right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < size; vert++) {
+        const upward = ((right + 1) & 2) === 0;
+        for (let j = 0; j < 2; j++) {
+          const col = right - j;
+          const row = upward ? size - 1 - vert : vert;
+          if (reserved[row][col]) continue;
+          const value = bitIndex < totalBits ? bit(bitIndex) : 0;
+          grid[row][col] = Boolean(value) !== MASKS[mask](row, col);
+          bitIndex++;
+        }
+      }
+    }
+
+    // Format information: 2 bits for error correction level M (00) + 3 mask bits.
+    let data = (0b00 << 3) | mask;
+    let rem = data << 10;
+    for (let i = 14; i >= 10; i--) {
+      if ((rem >> i) & 1) rem ^= 0b10100110111 << (i - 10);
+    }
+    const format = ((data << 10) | rem) ^ 0b101010000010010;
+    // The most significant of the 15 bits is the one that sits at (8, 0), so
+    // the sequence runs from bit 14 down to bit 0.
+    const bitAt = (i) => (format >> (14 - i)) & 1;
+    for (let i = 0; i <= 5; i++) grid[8][i] = Boolean(bitAt(i));      // copy 1, along row 8
+    grid[8][7] = Boolean(bitAt(6));
+    grid[8][8] = Boolean(bitAt(7));
+    grid[7][8] = Boolean(bitAt(8));
+    for (let i = 9; i <= 14; i++) grid[14 - i][8] = Boolean(bitAt(i));
+    for (let i = 0; i <= 6; i++) grid[size - 1 - i][8] = Boolean(bitAt(i));   // copy 2, seven
+    for (let i = 7; i <= 14; i++) grid[8][size - 15 + i] = Boolean(bitAt(i)); // …then eight
+
+    return { size, grid };
+  }
+
+  function penalty(size, grid) {
+    let score = 0;
+    const runs = (line) => {
+      let run = 1;
+      for (let i = 1; i <= line.length; i++) {
+        if (i < line.length && line[i] === line[i - 1]) run++;
+        else { if (run >= 5) score += 3 + (run - 5); run = 1; }
+      }
+    };
+    for (let i = 0; i < size; i++) {
+      runs(grid[i]);
+      runs(grid.map((row) => row[i]));
+    }
+    for (let r = 0; r < size - 1; r++) {
+      for (let c = 0; c < size - 1; c++) {
+        const v = grid[r][c];
+        if (v === grid[r][c + 1] && v === grid[r + 1][c] && v === grid[r + 1][c + 1]) score += 3;
+      }
+    }
+    const pattern = [true, false, true, true, true, false, true, false, false, false, false];
+    const reverse = pattern.slice().reverse();
+    const scan = (line) => {
+      for (let i = 0; i + 11 <= line.length; i++) {
+        const slice = line.slice(i, i + 11);
+        if (slice.every((v, k) => v === pattern[k]) || slice.every((v, k) => v === reverse[k])) score += 40;
+      }
+    };
+    for (let i = 0; i < size; i++) {
+      scan(grid[i]);
+      scan(grid.map((row) => row[i]));
+    }
+    let dark = 0;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (grid[r][c]) dark++;
+    score += 10 * Math.floor(Math.abs((dark * 100) / (size * size) - 50) / 5);
+    return score;
+  }
+
+  function make(text) {
+    const encoded = encodeBytes(text);
+    const codewords = interleave(encoded.words, encoded.groups, encoded.ecPerBlock);
+    let best = null;
+    for (let mask = 0; mask < 8; mask++) {
+      const { size, grid } = buildMatrix(encoded.version, codewords, mask);
+      const score = penalty(size, grid);
+      if (!best || score < best.score) best = { score, size, grid, mask };
+    }
+    return best;
+  }
+
+  function draw(canvas, text, scale) {
+    const { size, grid, mask } = make(text);
+    const quiet = 4;                                   // four-module quiet zone
+    const pixels = (size + quiet * 2) * scale;
+    canvas.width = pixels;
+    canvas.height = pixels;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, pixels, pixels);
+    ctx.fillStyle = "#000000";
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (grid[r][c]) ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+      }
+    }
+    canvas.title = "encodes " + text + " — QR version " + ((size - 17) / 4) + ", " + size + "×" + size +
+                   " modules, error correction M, mask " + mask;
+    return { size, grid, mask, text };
+  }
+  return { make, draw };
+})();
+
+document.getElementById("pageLink").href = PAGE_URL;
+document.getElementById("pageLink").textContent = PAGE_URL;
+window.__qr = QR.draw(document.getElementById("qr"), PAGE_URL, 8);
+</script>
+</body>
+</html>

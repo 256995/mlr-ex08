@@ -90,8 +90,12 @@ there is none — classification runs on the device's WebAssembly.
 | network requests | 7 GETs at load: 4 data files from this site, 2 runtime files from jsDelivr, 1 favicon. **None** while the camera runs, and **0** POSTs — no pixel is uploaded |
 | QR code | version 3, 29×29 modules, error correction M; decoded by an independent library as exactly `https://256995.github.io/mlr-ex08/`, and its modules agree with a reference encoder module for module (0 differences out of 841) |
 
-Still the student's own job for `REVIEW.md`: the screenshot from the phone with a
-real leaf, and a photo uploaded through the *Upload a photo* button.
+`phone_live_classification.jpg` is the student's own screenshot of a real leaf in
+front of the phone camera (Android, Chrome, 2026-11-12 10:01): apple 66.02%,
+chestnut 20.67%, cherry 9.11%, maple 4.20%, 71 ms per frame — about three times
+slower than the desktop number above, which is what a phone CPU does. Still the
+student's own job for `REVIEW.md`: the review text itself, and a photo uploaded
+through the *Upload a photo* button.
 
 ## Files
 
@@ -102,10 +106,35 @@ real leaf, and a photo uploaded through the *Upload a photo* button.
 | `model_info.json` | classes, input size, channel mean and std |
 | `check_image.jpg` | one 96 × 96 validation photo |
 | `check_expected.json` | the probabilities the notebook's PyTorch model gives it |
+| `phone_live_classification.jpg` | phone screenshot of a real leaf classified live, used in `REVIEW.md` |
 
 The QR code at the bottom of the page is drawn module by module by the
 JavaScript in `index.html` (byte mode, error correction level M, ISO/IEC 18004)
 — no QR image service is contacted, so nothing about the URL is sent to anyone.
+
+## Task 4: a second page in `better_classifier/`
+
+`better_classifier/index.html` is this page with a better model, and nothing else about it
+changed. It loads `better_classifier/leaf_model_v2.onnx` instead of the file above, its QR
+code encodes whatever address the page was loaded from (so it works from GitHub Pages and
+from a laptop on the same wifi), and it says out loud when the top probability is under 0.60
+instead of drawing bars as if they were a decision.
+
+Measured with `better_classifier/measure_onnx.py`, one thread, this page's preprocessing,
+on the same 120 last-year photos — and on those photos cropped, rotated and recoloured
+(what a phone camera actually hands the model):
+
+| | `leaf_model.onnx` here | `better_classifier/leaf_model_v2.onnx` |
+| --- | --- | --- |
+| validation photos | 0.500 | 0.875 |
+| camera-like photos | 0.450 | **0.900** |
+| when it says 0.95+ it is right | 0.56 | 0.98 |
+| size / one classification, 1 thread | 6.35 MB / 1.0 ms | 6.25 MB / 1.0 ms |
+
+`better_classifier/RESULTS.md` has the 32-run table of what each change brought and whether
+it beat the noise; `better_classifier/TRIED_AND_NOT_USED.md` has everything that did not
+survive being measured. `REPORT.md` — the report the notebook asks for — stays the
+student's own work and is not in either folder.
 
 ## For the teacher
 
